@@ -92,8 +92,12 @@ h1 {
 .lib-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dots { display: flex; gap: 4px; }
 .dots i { width: 10px; height: 10px; border-radius: 50%; }
-.lib-del { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 800; padding: 8px; border-radius: 8px; cursor: pointer; }
-.lib-del.armed { background: #4a2228; color: #ffc9cf; }
+.lib-del {
+  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center; background: rgba(239, 91, 98, .14); color: var(--do);
+}
+.lib-del:hover { background: rgba(239, 91, 98, .24); }
+.lib-del.armed { background: var(--fa); color: #13240c; animation: pulse 1.1s ease-in-out infinite; }
 .lib-empty { margin: 0; color: var(--muted); font-size: 14px; padding: 0 12px; }
 .drawer-new { padding: 14px; font-size: 16px; }
 @media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
@@ -561,13 +565,17 @@ function renderSongs() {
     b.onclick = () => { if (state === 'edit') exitEdit(); selectSong(s.id); closeDrawer(); };
     li.appendChild(b);
     if (s.custom) {
+      // croix rouge → coche verte pour confirmer (revient à la croix au bout de 3 s)
       const del = document.createElement('button');
-      del.className = 'lib-del'; del.textContent = 'Supprimer';
-      del.setAttribute('aria-label', `Supprimer ${s.title}`);
+      const ICON_X = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none"/></svg>';
+      const ICON_OK = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+      const reset = () => { del.classList.remove('armed'); del.innerHTML = ICON_X; del.setAttribute('aria-label', `Supprimer ${s.title}`); };
+      del.className = 'lib-del'; reset();
       del.onclick = () => {
         if (!del.classList.contains('armed')) {
-          del.classList.add('armed'); del.textContent = 'Confirmer';
-          setTimeout(() => { del.classList.remove('armed'); del.textContent = 'Supprimer'; }, 3000);
+          del.classList.add('armed'); del.innerHTML = ICON_OK;
+          del.setAttribute('aria-label', `Confirmer la suppression de ${s.title}`);
+          setTimeout(reset, 3000);
           return;
         }
         if (s.audio) { idbDel(s.id); players.delete(s.id); }
