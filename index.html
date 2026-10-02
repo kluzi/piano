@@ -2,8 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
 :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 *, *::before, *::after { box-sizing: inherit; }
@@ -36,7 +37,10 @@ body {
   font-family: var(--font-ui); font-weight: 600;
   overflow: hidden; -webkit-user-select: none; user-select: none;
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none; -webkit-text-size-adjust: 100%;
 }
+html { touch-action: manipulation; }
+.stage { touch-action: none; }
 .app { height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 10px 16px 12px; box-sizing: border-box; }
 
 header { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
@@ -421,6 +425,18 @@ kb.addEventListener('pointerdown', e => {
   const m = +k.dataset.m; downs.set(e.pointerId, k); k.classList.add('down');
   tone(m); onKey(m, k);
 });
+// iPad : Safari zoome sur un double-tap rapide ou quand deux doigts touchent l'écran (il croit à un pincement).
+// Sur le clavier et la scène, on bloque ces gestes ; les événements pointer, eux, arrivent toujours.
+const noZoom = e => { if (e.cancelable) e.preventDefault(); };
+[kb, document.getElementById('stage')].forEach(el => {
+  el.addEventListener('touchstart', e => { if (!e.target.closest('button, .sheet')) noZoom(e); }, { passive: false });
+  el.addEventListener('touchend', e => { if (!e.target.closest('button, .sheet')) noZoom(e); }, { passive: false });
+});
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => document.addEventListener(ev, noZoom, { passive: false }));
+document.addEventListener('dblclick', noZoom, { passive: false });
+// pincement à deux doigts n'importe où dans l'app
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) noZoom(e); }, { passive: false });
+
 const up = e => { const k = downs.get(e.pointerId); if (k) { k.classList.remove('down'); downs.delete(e.pointerId); } };
 ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => kb.addEventListener(ev, up));
 
