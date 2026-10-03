@@ -231,23 +231,48 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   --c: var(--do);
   position: relative; flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end;
   background: linear-gradient(#f3efe0, var(--ivory) 12%, var(--ivory));
-  border-right: 1px solid #b9b3a0; border-radius: 0 0 6px 6px; cursor: pointer;
-  transition: background-color .08s, transform .08s;
+  border-right: 1px solid #b9b3a0; border-radius: 0 0 6px 6px; cursor: pointer; overflow: hidden;
+  transform-origin: top center;
+  /* remontée avec un petit rebond, enfoncement quasi instantané (voir .down) */
+  transition: transform .24s cubic-bezier(.34, 1.56, .64, 1), box-shadow .24s ease, background-color .24s ease;
 }
 .wk:last-child { border-right: 0; }
 .wk .lbl {
+  position: relative; z-index: 1;
   display: block; text-align: center; background: var(--c); color: #1b1b20; font-weight: 900;
   font-size: clamp(12px, 2.5vw, 30px); padding: .45em 0; border-radius: 0 0 6px 6px;
+  transition: filter .24s ease;
 }
-.wk.lit, .wk.down { background: color-mix(in srgb, var(--c) 60%, var(--ivory)); }
-.wk.down { transform: translateY(2px); }
+.wk.lit { background: color-mix(in srgb, var(--c) 55%, var(--ivory)); }
+/* touche enfoncée : elle descend, l'ombre du cadre tombe sur son haut et ses côtés */
+.wk.down {
+  transform: translateY(3px) scaleY(.985);
+  background: color-mix(in srgb, var(--c) 35%, var(--ivory));
+  box-shadow: inset 0 12px 14px -10px rgba(0,0,0,.4), inset 4px 0 5px -4px rgba(0,0,0,.25), inset -4px 0 5px -4px rgba(0,0,0,.25);
+  transition-duration: .04s;
+}
+.wk.down .lbl { filter: saturate(1.25) brightness(1.07); transition-duration: .04s; }
 .wk.target { background: color-mix(in srgb, var(--c) 75%, var(--ivory)); animation: pulse 1.1s ease-in-out infinite; }
 .bk {
-  position: absolute; top: 0; height: 58%; z-index: 2; cursor: pointer;
+  position: absolute; top: 0; height: 58%; z-index: 2; cursor: pointer; overflow: hidden;
   background: linear-gradient(#2b2b2f, #050506); border-radius: 0 0 5px 5px;
   box-shadow: inset 0 -6px 0 #1a1a1d, 0 3px 4px rgba(0,0,0,.35);
+  transition: transform .22s cubic-bezier(.34, 1.56, .64, 1), box-shadow .22s ease;
 }
-.bk.lit, .bk.down, .bk.target { background: linear-gradient(#55555e, #222226); }
+.bk.lit, .bk.target { background: linear-gradient(#55555e, #222226); }
+.bk.down {
+  background: linear-gradient(#3a3a41, #111114);
+  transform: translateY(2px); box-shadow: inset 0 -2px 0 #1a1a1d, 0 1px 1px rgba(0,0,0,.35);
+  transition-duration: .04s;
+}
+/* onde de couleur qui part du doigt */
+.ripple {
+  position: absolute; width: 22px; height: 22px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 70%, #fff) 0%, transparent 70%);
+  transform: translate(-50%, -50%) scale(0); opacity: .95; animation: ripple .6s ease-out forwards;
+}
+.bk .ripple { background: radial-gradient(circle, rgba(255,255,255,.35) 0%, transparent 70%); }
+@keyframes ripple { to { transform: translate(-50%, -50%) scale(10); opacity: 0; } }
 .bk.target { animation: pulse 1.1s ease-in-out infinite; }
 .oops { animation: wobble .3s ease-in-out; }
 .yay { animation: yay .35s ease-out; }
@@ -474,12 +499,34 @@ for (let m = LO; m <= HI; m++) if (isBlack(m)) {
 }
 const xCenter = (m, kw) => isBlack(m) ? (whiteIdx.get(m - 1) + 1) * kw : (whiteIdx.get(m) + 0.5) * kw;
 
-const downs = new Map();
+const downs = new Map(); // doigt (pointerId) → touche enfoncée, ou null s'il a glissé hors du clavier
+function press(k, e, fromSlide) {
+  const m = +k.dataset.m;
+  downs.set(e.pointerId, k); k.classList.add('down');
+  ripple(k, e); tone(m); onKey(m, k, fromSlide);
+}
+function ripple(k, e) {
+  if (lessMotion) return;
+  const r = k.getBoundingClientRect(), s = document.createElement('span');
+  s.className = 'ripple';
+  s.style.left = `${e.clientX - r.left}px`; s.style.top = `${e.clientY - r.top}px`;
+  k.appendChild(s); setTimeout(() => s.remove(), 650);
+}
 kb.addEventListener('pointerdown', e => {
   const k = e.target.closest('[data-m]'); if (!k) return;
   e.preventDefault(); wake();
-  const m = +k.dataset.m; downs.set(e.pointerId, k); k.classList.add('down');
-  tone(m); onKey(m, k);
+  try { kb.setPointerCapture(e.pointerId); } catch {}
+  press(k, e, false);
+});
+// Glissando : doigt appuyé qui glisse sur le clavier → chaque touche traversée joue sa note
+kb.addEventListener('pointermove', e => {
+  if (!downs.has(e.pointerId)) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const k = el && el.closest ? el.closest('#kb [data-m]') : null;
+  const cur = downs.get(e.pointerId);
+  if (k === cur) return;
+  if (cur) cur.classList.remove('down');
+  if (k) press(k, e, true); else downs.set(e.pointerId, null);
 });
 // iPad : Safari zoome sur un double-tap rapide ou quand deux doigts touchent l'écran (il croit à un pincement).
 // Sur le clavier et la scène, on bloque ces gestes ; les événements pointer, eux, arrivent toujours.
@@ -493,8 +540,8 @@ document.addEventListener('dblclick', noZoom, { passive: false });
 // pincement à deux doigts n'importe où dans l'app
 document.addEventListener('touchmove', e => { if (e.touches.length > 1) noZoom(e); }, { passive: false });
 
-const up = e => { const k = downs.get(e.pointerId); if (k) { k.classList.remove('down'); downs.delete(e.pointerId); } };
-['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => kb.addEventListener(ev, up));
+const up = e => { const k = downs.get(e.pointerId); if (k) k.classList.remove('down'); downs.delete(e.pointerId); };
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => kb.addEventListener(ev, up));
 
 function flash(m, ms) {
   const k = keyEl.get(m); if (!k) return;
@@ -583,11 +630,12 @@ function starPath(s) {
   ctx.closePath();
 }
 
-function onKey(m, k) {
+function onKey(m, k, fromSlide) {
   if (state === 'edit') { if (recording) recordNote(m); return; }
   if (state !== 'run' || mode !== 'step' || idx >= notes.length) return;
   if (m === notes[idx].m) advance(true);
-  else { streak = 0; k.classList.remove('oops'); void k.offsetWidth; k.classList.add('oops'); }
+  // en glissando, les touches traversées ne comptent pas comme des erreurs
+  else if (!fromSlide) { streak = 0; k.classList.remove('oops'); void k.offsetWidth; k.classList.add('oops'); }
 }
 
 // ---------- Interface ----------
