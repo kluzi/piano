@@ -108,6 +108,40 @@ h1 {
   padding: 7px 12px; border-radius: 8px; cursor: pointer;
 }
 .seg button[aria-pressed="true"] { background: #3d3d45; color: var(--ink); }
+/* Jeux : posés sur la scène, le clavier reste en dessous */
+.game {
+  position: absolute; inset: 0; z-index: 2; cursor: default; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(12px, 2.5vh, 22px); padding: 12px 16px;
+}
+.game-card {
+  font-weight: 900; line-height: 1; font-size: clamp(64px, 12vw, 140px);
+  padding: .12em .5em .18em; border-radius: 26px; background: rgba(15, 15, 18, .55);
+  text-shadow: 0 4px 0 rgba(0,0,0,.35);
+}
+.game-card.pop { animation: cardpop .35s ease-out; }
+@keyframes cardpop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.06); } }
+.game-status { font-size: clamp(26px, 4vw, 40px); font-weight: 900; }
+.game-stars { display: flex; gap: 6px; }
+.game-stars svg { width: clamp(26px, 3.4vw, 36px); height: auto; }
+.choices { display: flex; gap: clamp(16px, 4vw, 48px); }
+.choice {
+  width: clamp(110px, 18vw, 190px); aspect-ratio: 1; border: 0; border-radius: 28px; cursor: pointer;
+  display: grid; place-items: center; background: var(--chip); padding: 7%;
+  transition: transform .15s ease, background-color .2s ease;
+}
+.choice svg { width: 100%; height: 100%; }
+.choice:active { transform: scale(.95); }
+.choice.good { background: rgba(127, 214, 94, .35); }
+.choice.bad { animation: wobble .3s ease-in-out; }
+.seq-dots { display: flex; gap: 12px; }
+.seq-dots i { width: 22px; height: 22px; border-radius: 50%; background: #3d3d45; transition: background-color .15s; }
+.levels { display: inline-flex; align-items: center; gap: 6px; background: var(--chip); border-radius: 999px; padding: 6px 10px; }
+.levels span { color: var(--muted); font-size: 13px; padding: 0 4px; }
+.levels button { width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer; background: #3d3d45; color: var(--muted); font: inherit; font-weight: 900; }
+.levels button[aria-pressed="true"] { background: var(--mi); color: #2a2405; }
+.kb.no-colors .lbl { background: #ebe6d6; }
+.kb.no-names .lbl { color: transparent; }
+
 /* Jauge de vitesse : tortue ← → lapin */
 .speed { display: inline-flex; align-items: center; gap: 8px; background: var(--chip); border-radius: 999px; padding: 6px 12px; }
 .speed[hidden] { display: none; }
@@ -325,6 +359,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
       </div>
       <button class="btn" id="sheetBtn">Partition</button>
     </div>
+    <div class="controls" id="gamebar" hidden>
+      <div class="levels" id="levels" role="group" aria-label="Niveau"></div>
+      <button class="round-btn" id="gameAgain" aria-label="Réécouter">
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
     <div class="editor" id="editor" hidden>
       <div class="from-file">
         <button class="btn primary" id="fileBtn">Depuis une musique…</button>
@@ -349,6 +389,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     <main class="stage" id="stage">
       <canvas id="cv"></canvas>
       <div class="hint" id="hint"></div>
+      <div class="game" id="game" hidden></div>
       <div class="sheet" id="sheet" hidden>
         <div class="sheet-head">
           <h3 id="sheetTitle"></h3>
@@ -377,6 +418,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
       </button>
     </div>
     <div class="drawer-body">
+      <section>
+        <h3>Jeux</h3>
+        <ul class="lib" id="libGames"></ul>
+      </section>
       <section>
         <h3>Chansons</h3>
         <ul class="lib" id="libBuiltin"></ul>
@@ -631,6 +676,7 @@ function starPath(s) {
 }
 
 function onKey(m, k, fromSlide) {
+  if (state === 'game') { if (!fromSlide) gameKey(m, k); return; }
   if (state === 'edit') { if (recording) recordNote(m); return; }
   if (state !== 'run' || mode !== 'step' || idx >= notes.length) return;
   if (m === notes[idx].m) advance(true);
@@ -642,17 +688,26 @@ function onKey(m, k, fromSlide) {
 // Bibliothèque (tiroir de gauche)
 function renderSongs() {
   const lists = { builtin: $('libBuiltin'), custom: $('libCustom') };
-  lists.builtin.innerHTML = ''; lists.custom.innerHTML = '';
+  lists.builtin.innerHTML = ''; lists.custom.innerHTML = ''; $('libGames').innerHTML = '';
+  GAMES.forEach(g => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.className = 'lib-item';
+    b.setAttribute('aria-current', String(state === 'game' && game === g.id));
+    b.innerHTML = `<span class="lib-title"></span><span class="dots" aria-hidden="true">${g.dots.map(m => `<i style="background:${colorOf(m)}"></i>`).join('')}</span>`;
+    b.querySelector('.lib-title').textContent = g.title;
+    b.onclick = () => startGame(g.id);
+    li.appendChild(b); $('libGames').appendChild(li);
+  });
   songs.forEach(s => {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.className = 'lib-item';
-    b.setAttribute('aria-current', String(state !== 'edit' && s.id === song.id));
+    b.setAttribute('aria-current', String((state === 'run' || state === 'done') && s.id === song.id));
     // les premières notes en pastilles de couleur : on reconnaît la chanson sans savoir lire
     const dots = parseNotes(s.notes).slice(0, 8).map(n => `<i style="background:${colorOf(n.m)}"></i>`).join('');
     b.innerHTML = `<span class="lib-title"></span><span class="dots" aria-hidden="true">${dots}</span>`;
     b.querySelector('.lib-title').textContent = s.title;
-    b.onclick = () => { if (state === 'edit') exitEdit(); selectSong(s.id); closeDrawer(); };
+    b.onclick = () => { if (state === 'edit') exitEdit(); if (state === 'game') leaveGame(); selectSong(s.id); closeDrawer(); };
     li.appendChild(b);
     if (s.custom) {
       // croix rouge → coche verte pour confirmer (revient à la croix au bout de 3 s)
@@ -697,9 +752,11 @@ function setPressed(group, attr, val) {
   group.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] == val)));
 }
 function updateUI() {
-  const editing = state === 'edit';
-  $('songTitle').textContent = editing ? ($('songName').value.trim() || 'Ma musique') : song.title;
-  $('controls').hidden = editing; $('editor').hidden = !editing;
+  const editing = state === 'edit', inGame = state === 'game';
+  $('songTitle').textContent = inGame ? GAMES.find(g => g.id === game).title
+    : editing ? ($('songName').value.trim() || 'Ma musique') : song.title;
+  $('controls').hidden = editing || inGame; $('editor').hidden = !editing;
+  $('gamebar').hidden = !inGame; $('game').hidden = !inGame;
   $('mStep').setAttribute('aria-pressed', String(mode === 'step'));
   $('mPlay').setAttribute('aria-pressed', String(mode === 'play'));
   $('speedSeg').hidden = $('playBtn').hidden = mode !== 'play';
@@ -718,8 +775,9 @@ function updateUI() {
   $('listenBtn').disabled = recording || !draft.length;
   $('okBtn').disabled = recording || !draft.length || !hasTitle;
 
-  keyEl.forEach(k => k.classList.remove('target'));
   const hint = $('hint');
+  if (inGame) { hint.hidden = true; return; } // les jeux gèrent eux-mêmes les touches à montrer
+  keyEl.forEach(k => k.classList.remove('target'));
   if (editing) {
     hint.innerHTML = recording ? recLabel()
       : !hasTitle ? 'Écris le <b>titre</b> de ta musique'
@@ -805,6 +863,7 @@ function stopListening() {
   listenTimers.forEach(clearTimeout); listenTimers = []; listenT0 = null;
 }
 function enterEdit() {
+  if (state === 'game') leaveGame();
   state = 'edit'; playing = false; player?.stop(); draft = []; stopRecording(); stopListening();
   $('songName').value = ''; $('bravo').hidden = true; renderSongs(); updateUI();
   setTimeout(() => $('songName').focus(), 50);
@@ -1081,6 +1140,198 @@ async function idbPut(k, v) { try { const db = await idb(); await new Promise(re
 async function idbGet(k) { try { const db = await idb(); return await new Promise(res => { const r = db.transaction('audio').objectStore('audio').get(k); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch { return null; } }
 async function idbDel(k) { try { const db = await idb(); db.transaction('audio', 'readwrite').objectStore('audio').delete(k); } catch {} }
 
+// ---------- Jeux ----------
+// 5 réussites = 5 étoiles = niveau suivant. Une erreur ne fait jamais perdre d'étoile.
+const GAMES = [
+  { id: 'find', title: 'Trouve la note', max: 5, dots: [60, 64, 67] },
+  { id: 'highlow', title: 'Grave ou aigu ?', max: 4, dots: [60, 84] },
+  { id: 'parrot', title: 'Le perroquet', max: 3, dots: [60, 62, 64, 62] },
+];
+const GSTORE = 'piano-arc-en-ciel-jeux';
+let game = null, gs = {}, gTimers = [];
+const glevel = { find: 1, highlow: 1, parrot: 1 };
+try { Object.assign(glevel, JSON.parse(localStorage.getItem(GSTORE) || '{}')); } catch {}
+const saveLevels = () => { try { localStorage.setItem(GSTORE, JSON.stringify(glevel)); } catch {} };
+const gLater = (fn, ms) => gTimers.push(setTimeout(fn, ms));
+const gClear = () => { gTimers.forEach(clearTimeout); gTimers = []; };
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const whitesIn = (lo, hi) => whites.filter(m => m >= lo && m <= hi);
+const STAR = on => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5L2.5 9.3l6.6-.8z" fill="${on ? '#ffd84a' : '#3d3d45'}"/></svg>`;
+const starsHTML = () => `<div class="game-stars" aria-label="${gs.stars} étoiles sur 5">${[0, 1, 2, 3, 4].map(i => STAR(i < gs.stars)).join('')}</div>`;
+const ICONS = {
+  bear: '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="24" cy="26" r="13" fill="#8a5a3c"/><circle cx="76" cy="26" r="13" fill="#8a5a3c"/><circle cx="24" cy="26" r="6" fill="#c99a76"/><circle cx="76" cy="26" r="6" fill="#c99a76"/><circle cx="50" cy="56" r="36" fill="#8a5a3c"/><ellipse cx="50" cy="69" rx="16" ry="12" fill="#c99a76"/><ellipse cx="50" cy="63" rx="6" ry="4.5" fill="#2a1a12"/><circle cx="37" cy="48" r="4" fill="#2a1a12"/><circle cx="63" cy="48" r="4" fill="#2a1a12"/></svg>',
+  bird: '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M40 84l-4 10M54 85l2 10" stroke="#f5a03a" stroke-width="4" stroke-linecap="round"/><ellipse cx="46" cy="60" rx="32" ry="26" fill="#f1dd4b"/><circle cx="62" cy="38" r="19" fill="#f1dd4b"/><path d="M79 34l15 5-15 6z" fill="#f5a03a"/><circle cx="67" cy="34" r="3.5" fill="#2a2405"/><path d="M24 58c10-12 28-10 32 3-12 7-26 5-32-3z" fill="#dcc236"/></svg>',
+  up: '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 12L86 52H63v36H37V52H14z" fill="#7fd65e"/></svg>',
+  down: '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 88L86 48H63V12H37v36H14z" fill="#6fa3dc"/></svg>',
+};
+
+function startGame(id) {
+  audio(); wake();
+  if (state === 'edit') exitEdit();
+  playing = false; player?.stop(); gClear();
+  $('sheet').hidden = true; $('bravo').hidden = true;
+  state = 'game'; game = id; gs = { stars: 0 };
+  closeDrawer(); renderSongs(); renderLevels(); applyKbMode(); updateUI();
+  newRound();
+}
+function leaveGame() {
+  gClear(); game = null; state = 'run';
+  kb.classList.remove('no-colors', 'no-names');
+  keyEl.forEach(k => k.classList.remove('target', 'lit'));
+}
+function renderLevels() {
+  const g = GAMES.find(x => x.id === game), box = $('levels');
+  box.innerHTML = '<span>Niveau</span>';
+  for (let i = 1; i <= g.max; i++) {
+    const b = document.createElement('button');
+    b.textContent = i; b.setAttribute('aria-pressed', String(glevel[game] === i));
+    b.onclick = () => { glevel[game] = i; saveLevels(); gs.stars = 0; gClear(); renderLevels(); applyKbMode(); newRound(); };
+    box.appendChild(b);
+  }
+}
+// Trouve la note, niveaux 4 et 5 : les couleurs puis les noms disparaissent des touches
+function applyKbMode() {
+  const f = state === 'game' && game === 'find';
+  kb.classList.toggle('no-colors', f && glevel.find >= 4);
+  kb.classList.toggle('no-names', f && glevel.find >= 5);
+}
+function burst() {
+  const r = cv.getBoundingClientRect();
+  for (let i = 0; i < (lessMotion ? 20 : 60); i++) particles.push({
+    x: r.width / 2, y: r.height * 0.5, vx: (Math.random() - 0.5) * 520, vy: -Math.random() * 480 - 120,
+    c: Object.values(HEX)[i % 7], life: 1.4 + Math.random(), s: 6 + Math.random() * 6, a: Math.random() * 6, star: i % 2 === 0,
+  });
+}
+function win(m) {
+  celebrate(m); gs.stars++;
+  if (gs.stars < 5) return false;
+  const g = GAMES.find(x => x.id === game);
+  const r = cv.getBoundingClientRect();
+  if (glevel[game] < g.max) {
+    glevel[game]++; saveLevels(); renderLevels(); applyKbMode();
+    words.push({ x: r.width / 2, y: r.height * 0.45, text: `Niveau ${glevel[game]} !`, life: 1.8, c: '#ffd84a' });
+  } else {
+    words.push({ x: r.width / 2, y: r.height * 0.45, text: 'Champion !', life: 1.8, c: '#ffd84a' });
+  }
+  burst(); return true;
+}
+function newRound() {
+  gClear(); keyEl.forEach(k => k.classList.remove('target'));
+  if (gs.stars >= 5) gs.stars = 0;
+  ({ find: roundFind, highlow: roundHighLow, parrot: roundParrot })[game]();
+}
+function gameKey(m, k) {
+  if (game === 'find') keyFind(m, k);
+  else if (game === 'parrot') keyParrot(m, k);
+}
+$('gameAgain').onclick = () => { audio(); if (gs.replay) gs.replay(); };
+
+// 1) Trouve la note : un nom de note en grand, elle touche la bonne touche (n'importe quel octave)
+const FIND_POOLS = [[0, 2, 4], [0, 2, 4, 5, 7], [0, 2, 4, 5, 7, 9, 11]];
+function roundFind() {
+  const pool = FIND_POOLS[Math.min(glevel.find, 3) - 1];
+  let pc; do { pc = pick(pool); } while (pc === gs.last && pool.length > 1);
+  Object.assign(gs, { last: pc, target: pc, miss: 0, locked: false, replay: () => tone(60 + pc) });
+  $('game').innerHTML = `<div class="game-card pop" style="color:${HEX[pc]}">${NAMES[pc]}</div>${starsHTML()}`;
+  gLater(() => tone(60 + pc), 250);
+}
+function keyFind(m, k) {
+  if (gs.locked) return;
+  if (m % 12 === gs.target) {
+    gs.locked = true; win(m);
+    $('game').querySelector('.game-stars').outerHTML = starsHTML();
+    gLater(newRound, 900);
+  } else {
+    k.classList.remove('oops'); void k.offsetWidth; k.classList.add('oops');
+    // au 2e essai raté, on montre où sont les bonnes touches
+    if (++gs.miss >= 2) keyEl.forEach((el, mm) => { if (mm % 12 === gs.target) el.classList.add('target'); });
+  }
+}
+
+// 2) Grave ou aigu ? (niv. 1-2 : une note, ours ou oiseau) — Ça monte ou ça descend ? (niv. 3-4 : deux notes)
+function roundHighLow() {
+  const lv = glevel.highlow;
+  gs.locked = false;
+  if (lv <= 2) {
+    const low = lv === 1 ? whitesIn(60, 64) : whitesIn(60, 67), high = lv === 1 ? whitesIn(79, 84) : whitesIn(74, 84);
+    const isHigh = Math.random() < 0.5, m = pick(isHigh ? high : low);
+    Object.assign(gs, { answer: isHigh ? 'bird' : 'bear', notes: [m], replay: () => tone(m, 1) });
+    $('game').innerHTML = `<div class="choices">
+      <button class="choice" data-a="bear" aria-label="Grave">${ICONS.bear}</button>
+      <button class="choice" data-a="bird" aria-label="Aigu">${ICONS.bird}</button></div>${starsHTML()}`;
+  } else {
+    let a, b;
+    do { a = pick(whitesIn(60, 84)); b = pick(whitesIn(60, 84)); }
+    while (a === b || (lv === 3 ? Math.abs(a - b) < 5 : Math.abs(a - b) > 4));
+    Object.assign(gs, { answer: b > a ? 'up' : 'down', notes: [a, b], replay: () => { tone(a, .6); gLater(() => tone(b, .8), 700); } });
+    $('game').innerHTML = `<div class="choices">
+      <button class="choice" data-a="up" aria-label="Ça monte">${ICONS.up}</button>
+      <button class="choice" data-a="down" aria-label="Ça descend">${ICONS.down}</button></div>${starsHTML()}`;
+  }
+  $('game').querySelectorAll('.choice').forEach(btn => btn.onclick = () => answerHighLow(btn));
+  gLater(gs.replay, 350);
+}
+function answerHighLow(btn) {
+  if (gs.locked) return;
+  audio();
+  if (btn.dataset.a === gs.answer) {
+    gs.locked = true; btn.classList.add('good');
+    // on montre sur le clavier où se trouvaient les notes : à gauche c'est grave, à droite c'est aigu
+    gs.notes.forEach((m, i) => gLater(() => { flash(m, 700); tone(m, .6); }, i * 450));
+    win(gs.notes.at(-1));
+    $('game').querySelector('.game-stars').outerHTML = starsHTML();
+    gLater(newRound, 1400);
+  } else {
+    btn.classList.remove('bad'); void btn.offsetWidth; btn.classList.add('bad');
+    gLater(gs.replay, 400);
+  }
+}
+
+// 3) Le perroquet : l'app joue une suite de notes, elle la répète. Suite de 2 notes, puis 3… jusqu'à 6
+const PARROT_POOLS = [[60, 62, 64], [60, 62, 64, 65, 67], whitesIn(60, 72)];
+function roundParrot() {
+  const pool = PARROT_POOLS[glevel.parrot - 1], len = 2 + gs.stars, seq = [];
+  while (seq.length < len) {
+    const m = pick(pool);
+    if (seq.length >= 2 && seq.at(-1) === m && seq.at(-2) === m) continue; // pas trois fois la même
+    seq.push(m);
+  }
+  Object.assign(gs, { seq, pos: 0, phase: 'listen', replay: () => playParrot(seq) });
+  playParrot(seq);
+}
+function parrotScreen(status, filled) {
+  $('game').innerHTML = `<div class="game-status">${status}</div>
+    <div class="seq-dots">${gs.seq.map((m, i) => `<i style="${i < filled ? `background:${colorOf(m)}` : ''}"></i>`).join('')}</div>${starsHTML()}`;
+}
+function playParrot(seq) {
+  gClear(); gs.phase = 'listen'; gs.pos = 0;
+  parrotScreen('Écoute…', 0);
+  const step = 750;
+  seq.forEach((m, i) => gLater(() => {
+    tone(m, .55); flash(m, 450);
+    const dot = $('game').querySelectorAll('.seq-dots i')[i]; if (dot) dot.style.background = colorOf(m);
+  }, 500 + i * step));
+  gLater(() => { gs.phase = 'play'; parrotScreen('À toi !', 0); }, 500 + seq.length * step + 150);
+}
+function keyParrot(m, k) {
+  if (gs.phase !== 'play') return;
+  const want = gs.seq[gs.pos];
+  if (m % 12 === want % 12) {
+    gs.pos++;
+    const dot = $('game').querySelectorAll('.seq-dots i')[gs.pos - 1]; if (dot) dot.style.background = colorOf(want);
+    if (gs.pos === gs.seq.length) {
+      gs.phase = 'done'; win(m);
+      parrotScreen('Bravo !', gs.seq.length);
+      gLater(newRound, 1300);
+    }
+  } else {
+    gs.phase = 'listen';
+    k.classList.remove('oops'); void k.offsetWidth; k.classList.add('oops');
+    $('game').querySelector('.game-status').textContent = 'Écoute encore';
+    gLater(() => playParrot(gs.seq), 900);
+  }
+}
+
 // Garde l'écran allumé pendant la séance (si l'appareil l'accepte)
 let lock = null;
 function wake() { if (lock || !navigator.wakeLock) return; navigator.wakeLock.request('screen').then(l => { lock = l; l.onrelease = () => lock = null; }).catch(() => {}); }
@@ -1102,7 +1353,7 @@ function draw(dt) {
   ctx.fillStyle = '#2c2c30'; ctx.fillRect(0, 0, W, H);
   const kw = W / NW, hitY = H, ppb = Math.max(54, H / 5.2);
   const meter = song.meter || 4;
-  const list = state === 'edit' ? draft : notes;
+  const list = state === 'game' ? [] : state === 'edit' ? draft : notes;
   // à l'écoute, les notes défilent jusqu'à la ligne ; sinon la dernière note touchée est posée sur la ligne
   const tt = state !== 'edit' ? t
     : listenT0 != null ? (performance.now() - listenT0) / 1000 * EDIT_BPM / 60
@@ -1113,7 +1364,7 @@ function draw(dt) {
   whites.forEach((m, i) => { if (m % 12 === 0 && i > 0) { ctx.beginPath(); ctx.moveTo(i * kw + .5, 0); ctx.lineTo(i * kw + .5, H); ctx.stroke(); } });
   ctx.fillStyle = '#77767f'; ctx.font = '700 12px Nunito, system-ui, sans-serif'; ctx.textAlign = 'left';
   const pk = song.pickup || 0; // levée : la première mesure commence après
-  if (state !== 'edit') for (let b = pk + Math.max(0, Math.floor((tt - pk) / meter)) * meter; b <= tt + H / ppb + meter; b += meter) {
+  if (state !== 'edit' && state !== 'game') for (let b = pk + Math.max(0, Math.floor((tt - pk) / meter)) * meter; b <= tt + H / ppb + meter; b += meter) {
     const y = hitY - (b - tt) * ppb; if (y < 0 || y > H) continue;
     ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); ctx.stroke();
     ctx.fillText(String((b - pk) / meter + 1), 6, y - 5);
