@@ -502,12 +502,36 @@ function loadCustom() { try { return JSON.parse(localStorage.getItem(STORE) || '
 function saveCustom() { try { localStorage.setItem(STORE, JSON.stringify(songs.filter(s => s.custom))); } catch {} }
 
 // ---------- Son ----------
-let ac;
+// Sur iPad, après une mise en veille, un appel ou une autre app qui joue du son, le contexte audio
+// peut rester « interrupted », ou « running » avec une horloge figée : plus aucun son jusqu'à
+// la fermeture de l'app. On le réveille à chaque geste, et on le recrée s'il ne repart pas.
+let ac, acProbe = null, acStale = false;
+function newAudio() {
+  try { ac?.close(); } catch {}
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  acProbe = null; acStale = false;
+}
 function audio() {
-  if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
-  if (ac.state === 'suspended') ac.resume();
+  if (!ac || ac.state === 'closed') newAudio();
+  if (ac.state !== 'running') ac.resume().catch(() => {});
   return ac;
 }
+function wakeAudio() {
+  if (!ac) return;
+  const now = performance.now(), p = acProbe, st = ac.state;
+  const frozen = p && now - p.at > 1000 && p.state === 'running' && st === 'running' && ac.currentTime - p.t < 0.1;
+  const deaf = p && now - p.at > 300 && p.tried && st !== 'running'; // resume() n'a pas suffi la dernière fois
+  if (acStale || st === 'closed' || st === 'interrupted' || frozen || deaf) newAudio();
+  if (ac.state !== 'running') ac.resume().catch(() => {});
+  acProbe = { at: now, t: ac.currentTime, state: ac.state, tried: ac.state !== 'running' };
+}
+['pointerdown', 'touchend', 'keydown'].forEach(t => document.addEventListener(t, wakeAudio, true));
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  acStale = true; // le son sera recréé au prochain geste
+  if (playing) { playing = false; player?.stop(); updateUI(); } // la chanson se met en pause
+});
+window.addEventListener('pagehide', () => { acStale = true; });
 function tone(m, dur = 0.8) {
   const a = audio(), t0 = a.currentTime, f = 440 * 2 ** ((m - 69) / 12);
   const g = a.createGain(), lp = a.createBiquadFilter();
